@@ -49,6 +49,7 @@ def calculateRAVEnNumber(xmltree, value):
 # Callback for MQTT Client
 #TODO: This isn't working??
 def on_connect(client, userdata, rc):
+  print "here"
   '''Event handler for when the MQTT connection is made'''
   if rc == 0:
     print "Connected to server."
@@ -69,9 +70,9 @@ def on_connect(client, userdata, rc):
   ser.close()
   exit()
 
-def on_publish(client, userdata, mid):
-  '''Event handler for when the MQTT message is published'''
-  print("Sent message")
+#def on_publish(client, userdata, mid):
+#  '''Event handler for when the MQTT message is published'''
+#  print("Sent message")
 
 def argProcessing():
   '''Processes command line arguments'''
@@ -101,15 +102,13 @@ def main():
   # send initialize command to RAVEn (pg.9 of XML API Doc)
   #TODO: For some reason this command causes the error "Unknown command"?
   #sendCommand(ser, "initialise" )
-
   # setup mosquitto connection
   client = mqtt.Client();
   client.on_connect = on_connect;
-  client.on_publish = on_publish;
+  #client.on_publish = on_publish;
   if programArgs.u is not None:
     client.username_pw_set(programArgs.u, programArgs.P)
   client.connect(programArgs.host, programArgs.port, 60)
-
   rawxml = ""
 
   while True:
@@ -130,7 +129,7 @@ def main():
         try:
           xmltree = ET.fromstring(rawxml)
           if xmltree.tag == 'InstantaneousDemand':
-            moz.publish(programArgs.topic, payload=getInstantDemandKWh(xmltree), qos=0)
+            client.publish(programArgs.topic, payload=getInstantDemandKWh(xmltree), qos=0)
             print getInstantDemandKWh(xmltree)
           else:
             log.warning("*** Unrecognised (not implemented) XML Fragment")
