@@ -7,16 +7,9 @@ import xml.etree.ElementTree as ET
 import re
 import mosquitto
 import logging as log
+import argparse
 
-####################
-
-# serDevice = "/dev/serial/by-id/usb-Rainforest_RFA-Z106-RA-PC_RAVEn_v2.3.21-if00-port0"
-serDevice = "/dev/ttyUSB0"
-
-# mozIP = "10.54.0.20"
-mozIP = "127.0.0.1"
-
-####################
+programArgs = "";
 
 # Logging setup
 log.basicConfig(filename='raven.log',level=log.DEBUG)
@@ -33,19 +26,12 @@ def sendCommand(serialport, command):
   serialport.write(output)
   time.sleep(0.5) # allow this command to sink in
 
-def getCurrentSummationKWh(xmltree):
-  '''Returns a single float value for the SummationDelivered from a Summation response from RAVEn'''
-  # Get the Current Summation (Meter Reading)
-  fReading = float(int(xmltree.find('SummationDelivered').text,16))
-  fResult = calculateRAVEnNumber(xmltree, fReading)
-  return formatRAVEnDigits(xmltree, fResult)
-
 def getInstantDemandKWh(xmltree):
   '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
   # Get the Instantaneous Demand
   fDemand = float(int(xmltree.find('Demand').text,16))
   fResult = calculateRAVEnNumber(xmltree, fDemand)
-  return formatRAVEnDigits(xmltree, fResult)
+  return fResult
 
 def calculateRAVEnNumber(xmltree, value):
   '''Calculates a float value from RAVEn using Multiplier and Divisor in XML response'''
@@ -60,18 +46,6 @@ def calculateRAVEnNumber(xmltree, value):
     fResult = float(value / fDivisor)
   return fResult*1000
 
-def formatRAVEnDigits(xmltree, value):
-  '''Formats a float value according to DigitsRight, DigitsLeft and SuppressLeadingZero settings from RAVEn XML response'''
-  # Get formatting parameters from XML - DigitsRight, DigitsLeft
-  iDigitsRight = int(xmltree.find('DigitsRight').text,16)
-  iDigitsLeft = int(xmltree.find('DigitsLeft').text,16)
-  sResult = ("{:0%d.%df}" % (iDigitsLeft+iDigitsRight+1,iDigitsRight)).format(value)
-  # Suppress Leading Zeros if specified in XML
-  if xmltree.find('SuppressLeadingZero').text == 'Y':
-    while sResult[0] == '0':
-      sResult = sResult[1:]
-  return sResult
-
 # Callback for MQTT Client
 #TODO: This isn't working??
 def onMosquittoConnect(mosq, userdata, rc):
@@ -82,9 +56,22 @@ def onMosquittoConnect(mosq, userdata, rc):
 def onMosquittoPublish(mosq, userdata, rc):
   print "Message sent!"
 
+def argProcessing():
+  '''Processes command line arguments'''
+  parser = argparse.ArgumentParser(description="Rainforest Automation RAVEn Serial to MQTT Interface")
+  parser.add_argument("--device", help="This is the serial port on which the RAVEn is available (default /dev/ttyUSB0)", default="/dev/ttyUSB0")
+  parser.add_argument("--host", help="MQTT server hostname (default localhost)", default="localhost")
+  parser.add_argument("--port", help="MQTT server port number (default 1883)", type=int, default=1883)
+  parser.add_argument("-u", help="MQTT server username (omit for no auth)", default=None)
+  parser.add_argument("-P", help="MQTT server password (default is empty)", default=None)
+  parser.add_argument("topic", help="MQTT topic string to publish to")
+  programArgs = parser.parse_args()
+
 def main():
+  argProcessing()
+  exit()
   # open serial port
-  ser = serial.Serial(serDevice, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
+  ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
   try:
     ser.close()
     ser.open()
@@ -103,7 +90,9 @@ def main():
   moz = mosquitto.Mosquitto("raven-usb-dongle", False)
   moz.on_connect = onMosquittoConnect
   moz.on_publish = onMosquittoPublish
-  moz.connect(mozIP, 8883)
+  if programArgs.u is not None:
+    moz.username_pw_set(programArgs.u, programArgs.p)
+  moz.connect(programArgs.host, programArgs.port)
 
   rawxml = ""
 
