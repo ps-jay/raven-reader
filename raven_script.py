@@ -58,7 +58,7 @@ def calculateRAVEnNumber(xmltree, value):
     fResult = float(value * fMultiplier)
   else: # (Divisor > 0) or anything else
     fResult = float(value / fDivisor)
-  return fResult
+  return fResult*1000
 
 def formatRAVEnDigits(xmltree, value):
   '''Formats a float value according to DigitsRight, DigitsLeft and SuppressLeadingZero settings from RAVEn XML response'''
@@ -74,15 +74,19 @@ def formatRAVEnDigits(xmltree, value):
 
 # Callback for MQTT Client
 #TODO: This isn't working??
-def onMosquittoConnect(rc):
-  '''Callback for Mosquitto connection - not working at the moment!'''
+def onMosquittoConnect(mosq, userdata, rc):
+  print rc
   if rc == 0:
     print "connected to MQTT ok"
+
+def onMosquittoPublish(mosq, userdata, rc):
+  print "Message sent!"
 
 def main():
   # open serial port
   ser = serial.Serial(serDevice, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
   try:
+    ser.close()
     ser.open()
     ser.flushInput()
     ser.flushOutput()
@@ -96,20 +100,17 @@ def main():
   #sendCommand(ser, "initialise" )
 
   # setup mosquitto connection
-  moz = mosquitto.Mosquitto("raven-usb-dongle", True)
+  moz = mosquitto.Mosquitto("raven-usb-dongle", False)
   moz.on_connect = onMosquittoConnect
-  moz.connect(mozIP)
-
-  # Other commands to play with in the future!
-  #sendCommand(ser, "get_meter_info")
-  #sendCommand(ser, "get_connection_status")
+  moz.on_publish = onMosquittoPublish
+  moz.connect(mozIP, 8883)
 
   rawxml = ""
 
   while True:
     # wait for /n terminated line on serial port (up to timeout)
     rawline = ser.readline()
-    log.debug("Received string from serial: [[" + rawline + "]]")
+    #log.debug("Received string from serial: [[" + rawline + "]]")
     # remove null bytes that creep in immediately after connecting
     rawline = rawline.strip('\0')
     # only bother if this isn't a blank line
@@ -125,11 +126,8 @@ def main():
         try:
           xmltree = ET.fromstring(rawxml)
           #TODO: Eventually move this branching tree into a function or lookup table
-          if xmltree.tag == 'CurrentSummationDelivered':
-            moz.publish("home/energy/summation", getCurrentSummationKWh(xmltree), 1)
-            print getCurrentSummationKWh(xmltree)
-          elif xmltree.tag == 'InstantaneousDemand':
-            moz.publish("home/energy/demand", getInstantDemandKWh(xmltree), 1)
+          if xmltree.tag == 'InstantaneousDemand':
+            moz.publish("sensors/frodo/power", getInstantDemandKWh(xmltree), 1)
             print getInstantDemandKWh(xmltree)
           else:
             log.warning("*** Unrecognised (not implemented) XML Fragment")
