@@ -69,7 +69,6 @@ def argProcessing():
 
 def main():
   argProcessing()
-  exit()
   # open serial port
   ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
   try:
