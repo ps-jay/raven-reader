@@ -65,10 +65,10 @@ def argProcessing():
   parser.add_argument("-u", help="MQTT server username (omit for no auth)", default=None)
   parser.add_argument("-P", help="MQTT server password (default is empty)", default=None)
   parser.add_argument("topic", help="MQTT topic string to publish to")
-  programArgs = parser.parse_args()
+  return parser.parse_args()
 
 def main():
-  argProcessing()
+  programArgs=argProcessing()
   # open serial port
   ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
   try:
@@ -90,7 +90,7 @@ def main():
   moz.on_connect = onMosquittoConnect
   moz.on_publish = onMosquittoPublish
   if programArgs.u is not None:
-    moz.username_pw_set(programArgs.u, programArgs.p)
+    moz.username_pw_set(programArgs.u, programArgs.P)
   moz.connect(programArgs.host, programArgs.port)
 
   rawxml = ""
