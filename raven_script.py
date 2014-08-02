@@ -54,17 +54,17 @@ def on_connect(client, userdata, rc):
     print "Connected to server."
     client.subscribe("$SYS/#")
     return
-  else if rc == 1:
+  elif rc == 1:
     print "Connection to server refused - incorrect protocol version."
-  else if rc == 2:
+  elif rc == 2:
     print "Connection to server refused - invalid client identifier."
-  else if rc == 3:
+  elif rc == 3:
     print "Connection to server refused - server unavailable."
-  else if rc == 4:
+  elif rc == 4:
     print "Connection to server refused - bad username or password."
-  else if rc == 5:
+  elif rc == 5:
     print "Connection to server refused - not authorised."
-  else if rc >=6 :
+  elif rc >=6 :
     print "Reserved code received!"
   ser.close()
   exit()
