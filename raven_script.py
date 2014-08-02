@@ -5,9 +5,9 @@ import serial
 import time
 import xml.etree.ElementTree as ET
 import re
-import mosquitto
 import logging as log
 import argparse
+import paho.mqtt.client as mqtt
 
 programArgs = "";
 
@@ -48,13 +48,30 @@ def calculateRAVEnNumber(xmltree, value):
 
 # Callback for MQTT Client
 #TODO: This isn't working??
-def onMosquittoConnect(mosq, userdata, rc):
-  print rc
+def on_connect(client, userdata, rc):
+  '''Event handler for when the MQTT connection is made'''
   if rc == 0:
-    print "connected to MQTT ok"
+    print "Connected to server."
+    client.subscribe("$SYS/#")
+    return
+  else if rc == 1:
+    print "Connection to server refused - incorrect protocol version."
+  else if rc == 2:
+    print "Connection to server refused - invalid client identifier."
+  else if rc == 3:
+    print "Connection to server refused - server unavailable."
+  else if rc == 4:
+    print "Connection to server refused - bad username or password."
+  else if rc == 5:
+    print "Connection to server refused - not authorised."
+  else if rc >=6 :
+    print "Reserved code received!"
+  ser.close()
+  exit()
 
-def onMosquittoPublish(mosq, userdata, rc):
-  print "Message sent!"
+def on_publish(client, userdata, mid):
+  '''Event handler for when the MQTT message is published'''
+  print("Sent message")
 
 def argProcessing():
   '''Processes command line arguments'''
@@ -86,19 +103,18 @@ def main():
   #sendCommand(ser, "initialise" )
 
   # setup mosquitto connection
-  moz = mosquitto.Mosquitto("raven-usb-dongle", False)
-  moz.on_connect = onMosquittoConnect
-  moz.on_publish = onMosquittoPublish
+  client = mqtt.Client();
+  client.on_connect = on_connect;
+  client.on_publish = on_publish;
   if programArgs.u is not None:
-    moz.username_pw_set(programArgs.u, programArgs.P)
-  moz.connect(programArgs.host, programArgs.port)
+    client.username_pw_set(programArgs.u, programArgs.P)
+  client.connect(programArgs.host, programArgs.port, 60)
 
   rawxml = ""
 
   while True:
     # wait for /n terminated line on serial port (up to timeout)
     rawline = ser.readline()
-    #log.debug("Received string from serial: [[" + rawline + "]]")
     # remove null bytes that creep in immediately after connecting
     rawline = rawline.strip('\0')
     # only bother if this isn't a blank line
@@ -113,9 +129,8 @@ def main():
         log.debug("End XML Tag Fragment found: " + rawline)
         try:
           xmltree = ET.fromstring(rawxml)
-          #TODO: Eventually move this branching tree into a function or lookup table
           if xmltree.tag == 'InstantaneousDemand':
-            moz.publish("sensors/frodo/power", getInstantDemandKWh(xmltree), 1)
+            moz.publish(programArgs.topic, payload=getInstantDemandKWh(xmltree), qos=0)
             print getInstantDemandKWh(xmltree)
           else:
             log.warning("*** Unrecognised (not implemented) XML Fragment")
