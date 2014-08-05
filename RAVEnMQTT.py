@@ -6,7 +6,7 @@ import logging as log
 import serial
 import paho.mqtt.client as mqtt
 
-class RAVEnMQTT():
+class RAVEnMQTT:
     '''This class handles all communication to/from the RAVEn and the MQTT     broker'''
 
     def __init__(self, serDevice, hostName, hostPort, hostUser, hostPwd, topic):
@@ -29,10 +29,7 @@ class RAVEnMQTT():
 
     def __del__(self):
         '''This will close all connections (serial/MQTT)'''
-        self.closeMQTT()
-        log.info("Closed MQTT connection.")
-        self.closeSerial()
-        log.info("Closed serial port connection.")
+        self.close()
 
     def _mqttOnPublish(self, client, userdata, mid):
         '''This is the event handler for when the MQTT message has been published'''
@@ -62,7 +59,7 @@ class RAVEnMQTT():
     def _openSerial(self):
         '''This function opens the serial port looking for a RAVEn. Returns True if successful, False otherwise.'''
         try:
-            self.ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
+            self.ser = serial.Serial(self.serDevice, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
             self.ser.close()
             self.ser.open()
             self.ser.flushInput()
@@ -118,8 +115,8 @@ class RAVEnMQTT():
 
     def close(self):
         '''This function will close all previously opened connections'''
-        _closeMQTT()
-        _closeSerial()
+        if self.client is not None: _closeMQTT()
+        if self.ser is not None: _closeSerial()
 
     def _isReady(self):
         '''This function is used to check if this object has been initialised correctly and is ready to process data'''
