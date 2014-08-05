@@ -8,6 +8,10 @@ import re
 import logging as log
 import argparse
 import paho.mqtt.client as mqtt
+import signal
+
+# This is the serial object (held globally so the Ctrl+C interrupt handler will work)
+ser = ""
 
 # Various Regex's
 reStartTag = re.compile('^<[a-zA-Z0-9]+>') # to find a start XML tag (at very beginning of line)
@@ -81,6 +85,10 @@ def argProcessing():
   parser.add_argument("--logfile", help="Log to the specified file rather than STDERR", default=None, type=str)
   return parser.parse_args()
 
+def exitSafely():
+  ser.close()
+  log.info("Ctrl+C pressed. Exiting.")
+
 def main():
   # Process cmd line arguments
   programArgs = argProcessing()
@@ -96,9 +104,13 @@ def main():
     log.basicConfig(filename='raven.log',level=verbosityLevel)
 
   log.info("Programme started.")
+
+  # Register exit handler
+  signal.signal(signal.SIGINT, exitSafely)
   
   # open serial port
   try:
+    global ser
     ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
     ser.close()
     ser.open()
@@ -158,8 +170,9 @@ def main():
     else:
       log.warning("Skipped an XML fragment since it was malformed.")
 
-  #TODO: never gets called?
+  # never gets called?
   ser.close()
+  log.info("Exiting.")
 
 if __name__ == '__main__':
   main()
