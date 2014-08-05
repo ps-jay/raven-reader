@@ -9,11 +9,6 @@ import logging as log
 import argparse
 import paho.mqtt.client as mqtt
 
-programArgs = "";
-
-# Logging setup
-log.basicConfig(filename='raven.log',level=log.DEBUG)
-
 # Various Regex's
 reStartTag = re.compile('^<[a-zA-Z0-9]+>') # to find a start XML tag (at very beginning of line)
 reEndTag = re.compile('^<\/[a-zA-Z0-9]+>') # to find an end XML tag (at very beginning of line)
@@ -49,24 +44,23 @@ def calculateRAVEnNumber(xmltree, value):
 # Callback for MQTT Client
 #TODO: This isn't working??
 def on_connect(client, userdata, rc):
-  print "here"
   '''Event handler for when the MQTT connection is made'''
   if rc == 0:
-    print "Connected to server."
+    log.info("Connected to server.")
     client.subscribe("$SYS/#")
     return
   elif rc == 1:
-    print "Connection to server refused - incorrect protocol version."
+    log.critical("Connection to server refused - incorrect protocol version.")
   elif rc == 2:
-    print "Connection to server refused - invalid client identifier."
+    log.critical("Connection to server refused - invalid client identifier.")
   elif rc == 3:
-    print "Connection to server refused - server unavailable."
+    log.critical("Connection to server refused - server unavailable.")
   elif rc == 4:
-    print "Connection to server refused - bad username or password."
+    log.critical("Connection to server refused - bad username or password.")
   elif rc == 5:
-    print "Connection to server refused - not authorised."
+    log.critical("Connection to server refused - not authorised.")
   elif rc >=6 :
-    print "Reserved code received!"
+    log.critical("Reserved code received!")
   ser.close()
   exit()
 
@@ -83,32 +77,51 @@ def argProcessing():
   parser.add_argument("-u", help="MQTT server username (omit for no auth)", default=None)
   parser.add_argument("-P", help="MQTT server password (default is empty)", default=None)
   parser.add_argument("topic", help="MQTT topic string to publish to")
+  parser.add_argument("-v", help="Increase output verbosity", action="count", default=0)
+  parser.add_argument("--logfile", help="Log to the specified file rather than STDERR", default=None, type=str)
   return parser.parse_args()
 
 def main():
-  programArgs=argProcessing()
+  # Process cmd line arguments
+  programArgs = argProcessing()
+
+  # Setup logging
+  if programArgs.v > 5:
+    verbosityLevel = 5
+  else:
+    verbosityLevel = programArgs.v
+  verbosityLevel = (5 - verbosityLevel)*10
+  log.basicConfig(format='%(asctime)s %(message)s')
+  if programArgs.logfile is not None:
+    log.basicConfig(filename='raven.log',level=verbosityLevel)
+
+  log.info("Programme started.")
+  
   # open serial port
-  ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
   try:
+    ser = serial.Serial(programArgs.device, 115200, serial.EIGHTBITS, serial.PARITY_NONE, timeout=0.5)
     ser.close()
     ser.open()
     ser.flushInput()
     ser.flushOutput()
-    print("connected to: " + ser.portstr)
+    log.info("connected to: " + ser.portstr)
   except Exception as e:
-    print "cannot open serial port: " + str(e)
+    log.critical("cannot open serial port: " + str(e))
     exit()
   
   # send initialize command to RAVEn (pg.9 of XML API Doc)
   #TODO: For some reason this command causes the error "Unknown command"?
   #sendCommand(ser, "initialise" )
-  # setup mosquitto connection
+
+  # setup mqtt connection
   client = mqtt.Client();
   client.on_connect = on_connect;
   #client.on_publish = on_publish;
   if programArgs.u is not None:
     client.username_pw_set(programArgs.u, programArgs.P)
   client.connect(programArgs.host, programArgs.port, 60)
+
+  # begin listening to RAVEn
   rawxml = ""
 
   while True:
@@ -130,7 +143,7 @@ def main():
           xmltree = ET.fromstring(rawxml)
           if xmltree.tag == 'InstantaneousDemand':
             client.publish(programArgs.topic, payload=getInstantDemandKWh(xmltree), qos=0)
-            print getInstantDemandKWh(xmltree)
+            log.debug(getInstantDemandKWh(xmltree))
           else:
             log.warning("*** Unrecognised (not implemented) XML Fragment")
             log.warning(rawxml)
@@ -143,7 +156,7 @@ def main():
         rawxml = rawxml + rawline
         log.debug("Normal inner XML Fragment: " + rawline)
     else:
-      log.debug("Skipped")
+      log.warning("Skipped an XML fragment since it was malformed.")
 
   #TODO: never gets called?
   ser.close()
