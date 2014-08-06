@@ -14,3 +14,7 @@ http://www.rainforestautomation.com/sites/default/files/download/rfa-z106/raven_
 
 Paho's Python Client Documentation:
 http://www.eclipse.org/paho/clients/python/docs/
+
+Known Issues
+============
+The current master branch doesn't handle disconnects well, i.e. reconnection isn't performed and the programme stalls, requiring a Ctrl+C and script restart. The devel branch fixes this issue (but isn't stable yet).
