@@ -40,9 +40,10 @@ def main():
   else:
     verbosityLevel = programArgs.v
   verbosityLevel = (5 - verbosityLevel)*10
-  log.basicConfig(format='%(asctime)s %(message)s')
   if programArgs.logfile is not None:
-    log.basicConfig(filename='raven.log',level=verbosityLevel)
+    log.basicConfig(format='%(asctime)s %(message)s', filename='raven.log', level=verbosityLevel)
+  else:
+    log.basicConfig(format='%(asctime)s %(message)s', level=verbosityLevel)
 
   # Initial log message
   log.info("Programme started.")
