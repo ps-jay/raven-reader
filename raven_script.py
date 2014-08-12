@@ -22,7 +22,7 @@ def argProcessing():
   parser.add_argument("--logfile", help="Log to the specified file rather than STDERR", default=None, type=str)
   return parser.parse_args()
 
-def exitSafely():
+def exitSafely(signum, frame):
   '''SIGINT (Ctrl+C) handler'''
   global myWorker
   if myWorker is not None: 
@@ -54,10 +54,10 @@ def main():
   if not myWorker.open():
     log.critical("Couldn't access resources needed. Check logs for more information.")
   else:
-    myWorker.run()
-
     # Register exit handler
     signal.signal(signal.SIGINT, exitSafely)
+
+    myWorker.run()
 
 if __name__ == '__main__':
   main()
