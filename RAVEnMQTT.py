@@ -109,8 +109,8 @@ class RAVEnMQTT:
 
     def close(self):
         '''This function will close all previously opened connections'''
-        if self.client is not None: _closeMQTT()
-        if self.ser is not None: _closeSerial()
+        if self.client is not None: self._closeMQTT()
+        if self.ser is not None: self._closeSerial()
 
     def _isReady(self):
         '''This function is used to check if this object has been initialised correctly and is ready to process data'''
