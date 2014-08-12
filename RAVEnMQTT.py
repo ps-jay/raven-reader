@@ -17,7 +17,6 @@ class RAVEnMQTT:
         self.hostUser = hostUser
         self.hostPwd = hostPwd
         self.topic = topic
-        self.mqttNoGood = True
         self.mqttTimeout = 10
         self.hostKeepAlive = 60
         self.ser = None
@@ -40,7 +39,6 @@ class RAVEnMQTT:
         if rc == 0:
             log.info("Connected to MQTT server successfully.")
             client.subscribe("$SYS/#")
-            self.mqttNoGood = False
         elif rc == 1:
             log.critical("Connection to server refused - incorrect protocol version.")
         elif rc == 2:
@@ -54,7 +52,6 @@ class RAVEnMQTT:
         elif rc >=6 :
             log.critical("Reserved code received!")
         self.closeSerial()
-        self.mqttNoGood = True
 
     def _openSerial(self):
         '''This function opens the serial port looking for a RAVEn. Returns True if successful, False otherwise.'''
@@ -64,7 +61,7 @@ class RAVEnMQTT:
             self.ser.open()
             self.ser.flushInput()
             self.ser.flushOutput()
-            log.info("Connected to: " + ser.portstr)
+            log.info("Connected to: " + self.ser.portstr)
             return True
         except Exception as e:
             log.critical("Cannot open serial port: " + str(e))
@@ -73,18 +70,12 @@ class RAVEnMQTT:
     def _openMQTT(self):
         '''This function will open a connection with an MQTT broker'''
         self.client = mqtt.Client()
-        self.client.on_connect = self._mqttOnConnect
+        self.client.on_connect = lambda x, y, z: self._mqttOnConnect
         self.client.on_publish = self._mqttOnPublish
         if self.hostUser is not None:
             self.client.username_pw_set(self.hostUser, self.hostPwd)
+	self.client.loop_start()
         self.client.connect(self.hostName, self.hostPort, self.hostKeepAlive)
-        if self.mqttNoGood:
-            time.sleep(self.mqttTimeout)
-            if self.mqttNoGood:
-                self.client.disconnect()
-                log.info("MQTT connection closed prematurely.")
-                return False
-        self.client.loop_start()
         return True
 
     def _closeSerial(self):
@@ -100,7 +91,6 @@ class RAVEnMQTT:
         if self.client is not None:
             self.client.loop_stop()
             self.client.disconnect()
-            self.mqttNoGood = True
             log.info("MQTT connection was closed.")
         else:
             log.debug("Asking to close MQTT connection, but it was never open.")
@@ -108,10 +98,14 @@ class RAVEnMQTT:
     def open(self):
         '''This function will open all necessary connections for the RAVEn to talk to the MQTT broker'''
         if not self._openSerial():
-            return
+	    log.critical("Serial port was not opened due to an error.")
+            return False
         else:
             if not self._openMQTT():
-                return
+		log.critical("MQTT connection was not opened due to an error.")
+                return False
+	    else:
+		return True
 
     def close(self):
         '''This function will close all previously opened connections'''
@@ -124,7 +118,7 @@ class RAVEnMQTT:
 
     def run(self):
         '''This function will read from the serial device, process the data and publish MQTT messages'''
-        if _isReady():
+        if self._isReady():
             # begin listening to RAVEn
             rawxml = ""
 
@@ -136,17 +130,17 @@ class RAVEnMQTT:
                 # only bother if this isn't a blank line
                 if len(rawline) > 0:
                     # start tag
-                    if reStartTag.match(rawline):
+                    if self.reStartTag.match(rawline):
                         rawxml = rawline
                         log.debug("Start XML Tag found: " + rawline)
                     # end tag
-                    elif reEndTag.match(rawline):
+                    elif self.reEndTag.match(rawline):
                         rawxml = rawxml + rawline
                         log.debug("End XML Tag Fragment found: " + rawline)
                         try:
                             xmltree = ET.fromstring(rawxml)
                             if xmltree.tag == 'InstantaneousDemand':
-                                self.client.publish(programArgs.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
+                                self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
                                 log.debug(self._getInstantDemandKWh(xmltree))
                             else:
                                 log.warning("*** Unrecognised (not implemented) XML Fragment")
@@ -160,7 +154,9 @@ class RAVEnMQTT:
                         rawxml = rawxml + rawline
                         log.debug("Normal inner XML Fragment: " + rawline)
                 else:
-                  log.warning("Skipped an XML fragment since it was malformed.")
+                  #log.warning("Skipped an XML fragment since it was malformed.")
+		  pass
+
         else:
             log.error("Was asked to begin reading/writing data without opening connections.")
 
