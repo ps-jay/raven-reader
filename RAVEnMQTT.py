@@ -71,7 +71,7 @@ class RAVEnMQTT:
         '''This function will open a connection with an MQTT broker'''
         self.client = mqtt.Client()
         self.client.on_connect = lambda x, y, z: self._mqttOnConnect
-        self.client.on_publish = self._mqttOnPublish
+        self.client.on_publish = lambda x, y, z: self._mqttOnPublish
         if self.hostUser is not None:
             self.client.username_pw_set(self.hostUser, self.hostPwd)
 	self.client.loop_start()
@@ -154,7 +154,6 @@ class RAVEnMQTT:
                         rawxml = rawxml + rawline
                         log.debug("Normal inner XML Fragment: " + rawline)
                 else:
-                  #log.warning("Skipped an XML fragment since it was malformed.")
 		  pass
 
         else:
