@@ -5,6 +5,7 @@ import signal
 from RAVEnMQTT import RAVEnMQTT as raven
 import sys
 import logging as log
+import daemon.*
 
 # This holds our RAVEn to MQTT class
 myWorker = None
@@ -20,6 +21,8 @@ def argProcessing():
   parser.add_argument("topic", help="MQTT topic string to publish to")
   parser.add_argument("-v", help="Increase output verbosity", action="count", default=0)
   parser.add_argument("--logfile", help="Log to the specified file rather than STDERR", default=None, type=str)
+  parser.add_argument("--daemon", help="Fork and run in background", default=None)
+  parser.add_argument("--pidfile", help="PID file when run with --daemon (ignored otherwise)", default="/var/run/raven_script.pid")
   return parser.parse_args()
 
 def exitSafely(signum, frame):
@@ -41,12 +44,21 @@ def main():
     verbosityLevel = programArgs.v
   verbosityLevel = (5 - verbosityLevel)*10
   if programArgs.logfile is not None:
-    log.basicConfig(format='%(asctime)s %(message)s', filename='raven.log', level=verbosityLevel)
+    log.basicConfig(format='%(asctime)s %(message)s', filename=programArgs.logfile, level=verbosityLevel)
   else:
     log.basicConfig(format='%(asctime)s %(message)s', level=verbosityLevel)
 
   # Initial log message
   log.info("Programme started.")
+
+  # Should we be daemonising?
+  if programArgs.daemon is not None:
+    dMon = DaemonContext()
+    dMon.pidfile = programArgs.pidfile
+    dMon.detach_process = True
+    dMon.signal_map = { signal.SIGTTIN: None, signal.SIGTTOU: None, signal.SIGTSTP: None, signal.SIGTERM: 'exitSafely'}
+    dMon.prevent_core = True
+
 
   # Initialise the class 
   global myWorker
@@ -54,8 +66,11 @@ def main():
   if not myWorker.open():
     log.critical("Couldn't access resources needed. Check logs for more information.")
   else:
-    # Register exit handler
-    signal.signal(signal.SIGINT, exitSafely)
+    # Register exit handler (only if in fg)
+    if programArgs.daemon is None:
+      signal.signal(signal.SIGINT, exitSafely)
+    else:
+      dMon.open()
 
     myWorker.run()
 
