@@ -5,7 +5,7 @@ import signal
 from RAVEnMQTT import RAVEnMQTT as raven
 import sys
 import logging as log
-import daemon.*
+from daemon import DaemonContext
 
 # This holds our RAVEn to MQTT class
 myWorker = None
