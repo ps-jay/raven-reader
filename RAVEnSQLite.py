@@ -113,6 +113,8 @@ class RAVEnSQLite:
                                 #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
                                 #self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
                                 log.debug(self._getInstantDemandKWh(xmltree))
+                                # back off, there's only one update per ~40 seconds anyway
+                                time.sleep(20)
                             else:
                                 log.warning("*** Unrecognised (not implemented) XML Fragment")
                                 log.warning(rawxml)
@@ -120,6 +122,14 @@ class RAVEnSQLite:
                           log.error("Exception triggered: " + str(e))
                         # reset rawxml
                         rawxml = ""
+			# ask for another read
+                        log.debug("Ask for another instantanious read")
+                        self.ser.writelines(
+                          '<Command>'
+                          '<Name>get_instantaneous_demand</Name>'
+                          '<Refresh>Y</Refresh>'
+                          '</Command>'
+                        )
                     # if it starts with a space, it's inside the fragment
                     else:
                         rawxml = rawxml + rawline
@@ -133,7 +143,13 @@ class RAVEnSQLite:
     def _getInstantDemandKWh(self, xmltree):
         '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
         # Get the Instantaneous Demand
-        fDemand = float(int(xmltree.find('Demand').text,16))
+        hex_demand = xmltree.find('Demand').text
+        # Deal with export (neg values)
+        if int(hex_demand, 16) < 0x80000000:
+            d = int(hex_demand, 16)
+        else:
+            d = -1 * 0xFFFFFFFF + int(hex_demand, 16) - 1
+        fDemand = float(d)
         fResult = self._calculateRAVEnNumber(xmltree, fDemand)
         return fResult
 
