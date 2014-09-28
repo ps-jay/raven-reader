@@ -9,9 +9,10 @@ import sqlite3
 class RAVEn2SQLite:
     '''This class handles all communication to/from the RAVEn and the SQLite database'''
 
-    def __init__(self, serDevice, hostName, hostPort, hostUser, hostPwd, topic):
+    def __init__(self, serDevice, db_file):
         '''The constructor requires all connection information for both SQLite and the RAVEn'''
         self.serDevice = serDevice
+        self.database_file = db_file
         self.ser = None
         self.database = None
         self.cursor = None
