@@ -66,14 +66,14 @@ class RAVEnSQLite:
     def open(self):
         '''This function will open all necessary connections for the RAVEn to talk to the SQLite database'''
         if not self._openSerial():
-	    log.critical("Serial port was not opened due to an error.")
+            log.critical("Serial port was not opened due to an error.")
             return False
         else:
             if not self._openSQLite():
-		log.critical("SQLite connection was not opened due to an error.")
+                log.critical("SQLite connection was not opened due to an error.")
                 return False
-	    else:
-		return True
+            else:
+                return True
 
     def close(self):
         '''This function will close all previously opened connections'''
@@ -122,7 +122,7 @@ class RAVEnSQLite:
                           log.error("Exception triggered: " + str(e))
                         # reset rawxml
                         rawxml = ""
-			# ask for another read
+                        # ask for another read
                         log.debug("Ask for another instantanious read")
                         self.ser.writelines(
                           '<Command>'
@@ -135,7 +135,7 @@ class RAVEnSQLite:
                         rawxml = rawxml + rawline
                         log.debug("Normal inner XML Fragment: " + rawline)
                 else:
-		  pass
+                  pass
 
         else:
             log.error("Was asked to begin reading/writing data without opening connections.")
