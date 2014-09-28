@@ -82,7 +82,7 @@ class RAVEnSQLite:
 
     def _isReady(self):
         '''This function is used to check if this object has been initialised correctly and is ready to process data'''
-        return (self.client is not None) and (self.ser is not None)
+        return (self.database is not None) and (self.ser is not None)
 
     def run(self):
         '''This function will read from the serial device, process the data and write to the SQLite database'''
