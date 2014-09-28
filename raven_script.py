@@ -11,7 +11,7 @@ from daemon import DaemonContext
 myWorker = None
 
 def argProcessing():
-  '''Processes command line arguments'''
+    '''Processes command line arguments'''
     parser = argparse.ArgumentParser(
         description="Rainforest Automation RAVEn Serial to SQLite",
     )

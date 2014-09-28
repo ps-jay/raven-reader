@@ -6,7 +6,7 @@ import logging as log
 import serial
 import sqlite3
 
-class RAVEn2SQLite:
+class RAVEnSQLite:
     '''This class handles all communication to/from the RAVEn and the SQLite database'''
 
     def __init__(self, serDevice, db_file):
