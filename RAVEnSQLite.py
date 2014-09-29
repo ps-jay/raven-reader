@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import logging as log
 import serial
 import sqlite3
+import threading
 
 class RAVEnSQLite:
     '''This class handles all communication to/from the RAVEn and the SQLite database'''
@@ -16,6 +17,11 @@ class RAVEnSQLite:
         self.ser = None
         self.database = None
         self.cursor = None
+
+        self._inst_timer_running = threading.Event()
+        self._summ_timer_running = threading.Event()
+        self._inst_timer = None
+        self._summ_timer = None
 
         # Various Regex's
         self.reStartTag = re.compile('^<[a-zA-Z0-9]+>') # to find a start XML tag (at very beginning of line)
@@ -76,13 +82,45 @@ class RAVEnSQLite:
                 return True
 
     def close(self):
-        '''This function will close all previously opened connections'''
+        '''This function will close all previously opened connections & cancel timers'''
+        self._inst_timer.cancel()
+        self._summ_timer.cancel()
         if self.database is not None: self._closeSQLite()
         if self.ser is not None: self._closeSerial()
 
     def _isReady(self):
         '''This function is used to check if this object has been initialised correctly and is ready to process data'''
         return (self.database is not None) and (self.ser is not None)
+
+    def _request_instant(self):
+        SECONDS = 40.0
+        if not self._inst_timer_running.is_set():
+            self._inst_timer_running.set()
+            self.ser.writelines(
+                '<Command>'
+                '  <Name>get_instantaneous_demand</Name>'
+                '  <Refresh>Y</Refresh>'
+                '</Command>'
+            )
+            log.debug("Requested an instantaneous demand reading")
+            self._inst_timer = threading.Timer(SECONDS, self._inst_timer_running.clear)
+            self._inst_timer.start()
+            log.debug("Started a %d second back-off timer for instant demand reading requests" % SECONDS)
+
+    def _request_summation(self):
+        SECONDS = 20.0
+        if not self._summ_timer_running.is_set():
+            self._summ_timer_running.set()
+            self.ser.writelines(
+                '<Command>'
+                '  <Name>get_current_summation_delivered</Name>'
+                '  <Refresh>Y</Refresh>'
+                '</Command>'
+            )
+            log.debug("Requested a current summation reading")
+            self._summ_timer = threading.Timer(SECONDS, self._summ_timer_running.clear)
+            self._summ_timer.start()
+            log.debug("Started a %d second back-off timer for current summation reading requests" % SECONDS)
 
     def run(self):
         '''This function will read from the serial device, process the data and write to the SQLite database'''
@@ -91,6 +129,9 @@ class RAVEnSQLite:
             rawxml = ""
 
             while True:
+                # Send requests (if timer has expired, see function definitions)
+                self._request_instant()
+                self._request_summation()
                 # wait for /n terminated line on serial port (up to timeout)
                 rawline = self.ser.readline()
                 # remove null bytes that creep in immediately after connecting
@@ -113,8 +154,8 @@ class RAVEnSQLite:
                                 #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
                                 #self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
                                 log.debug(self._getInstantDemandKWh(xmltree))
-                                # back off, there's only one update per ~40 seconds anyway
-                                time.sleep(20)
+                            elif xmltree.tag == 'CurrentSummationDelivered':
+                                log.debug(self._get_summation(xmltree))
                             else:
                                 log.warning("*** Unrecognised (not implemented) XML Fragment")
                                 log.warning(rawxml)
@@ -122,23 +163,18 @@ class RAVEnSQLite:
                           log.error("Exception triggered: " + str(e))
                         # reset rawxml
                         rawxml = ""
-                        # ask for another read
-                        log.debug("Ask for another instantanious read")
-                        self.ser.writelines(
-                          '<Command>'
-                          '<Name>get_instantaneous_demand</Name>'
-                          '<Refresh>Y</Refresh>'
-                          '</Command>'
-                        )
                     # if it starts with a space, it's inside the fragment
                     else:
                         rawxml = rawxml + rawline
-                        log.debug("Normal inner XML Fragment: " + rawline)
+                        # log.debug("Normal inner XML Fragment: " + rawline)
                 else:
                   pass
 
         else:
             log.error("Was asked to begin reading/writing data without opening connections.")
+
+    def _get_summation(self, xmltree):
+        log.warning("I'm not implemented yet")
 
     def _getInstantDemandKWh(self, xmltree):
         '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
