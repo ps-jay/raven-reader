@@ -2,6 +2,7 @@
 
 import argparse
 import signal
+import sqlite3
 from RAVEnSQLite import RAVEnSQLite as raven
 import sys
 import logging as log
@@ -42,6 +43,11 @@ def argProcessing():
         help="SQLite database file to write to",
         default="/srv/energy/meter.sqlite",
     )
+    parser.add_argument("--init-database",
+        help="Initialise the database, and then quit (ignores most options)",
+        default=False,
+        action="store_true",
+    )
     return parser.parse_args()
 
 
@@ -76,8 +82,27 @@ def main():
             level=verbosityLevel
         )
 
-    # Initial log message
-    log.info("Programme started.")
+    if programArgs.init_database:
+        log.warning("Initialising the database")
+        database = sqlite3.connect(programArgs.database)
+        cursor = database.cursor()
+        cursor.execute('''
+            CREATE TABLE demand (
+                timestamp INTEGER PRIMARY KEY,
+                watts INTEGER
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE metered (
+                timestamp INTEGER PRIMARY KEY,
+                imported INTEGER,
+                exported INTEGER
+            )
+        ''')
+        database.commit()
+        cursor.close()
+        database.close()
+        sys.exit(127)
 
     # Should we be daemonising?
     if programArgs.daemon is not None:
