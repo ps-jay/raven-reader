@@ -33,7 +33,8 @@ def argProcessing():
     )
     parser.add_argument("--daemon",
         help="Fork and run in background",
-        default=None,
+        default=False,
+        action="store_true",
     )
     parser.add_argument("--pidfile", "-p",
         help="PID file when run with --daemon (ignored otherwise)",
@@ -105,7 +106,7 @@ def main():
         sys.exit(127)
 
     # Should we be daemonising?
-    if programArgs.daemon is not None:
+    if programArgs.daemon:
         dMon = DaemonContext()
         dMon.pidfile = programArgs.pidfile
         dMon.detach_process = True
@@ -127,7 +128,7 @@ def main():
         )
     else:
         # Register exit handler (only if in fg)
-        if programArgs.daemon is None:
+        if not programArgs.daemon:
             signal.signal(signal.SIGINT, exitSafely)
         else:
             dMon.open()
