@@ -15,6 +15,13 @@ http://www.rainforestautomation.com/sites/default/files/download/rfa-z106/raven_
 Paho's Python Client Documentation:
 http://www.eclipse.org/paho/clients/python/docs/
 
-Known Issues
-============
-The current master branch doesn't handle disconnects well, i.e. reconnection isn't performed and the programme stalls, requiring a Ctrl+C and script restart. The devel branch fixes this issue (but isn't stable yet).
+Releases
+========
+**v2.0.0**: Rewritten from the ground up to improve maintenance, feature additions and error handling.
+**v1.0.0**: This is the initial release based on an older set of scripts. I recommend going to v2 for better error handling and MQTT management.
+
+Branches
+========
+
+**master**: the latest stable version; bug fixes only
+**devel**: bleeding edge; may be broken; development happens here
