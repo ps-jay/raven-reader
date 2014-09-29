@@ -153,9 +153,9 @@ class RAVEnSQLite:
                                 #cursor.execute('''INSERT INTO %s
                                 #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
                                 #self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
-                                log.debug(self._getInstantDemandKWh(xmltree))
+                                log.warning("Current demand: %dW" % self._get_instant_demand(xmltree))
                             elif xmltree.tag == 'CurrentSummationDelivered':
-                                log.debug(self._get_summation(xmltree))
+                                log.warning(self._get_summation(xmltree))
                             else:
                                 log.warning("*** Unrecognised (not implemented) XML Fragment")
                                 log.warning(rawxml)
@@ -173,21 +173,41 @@ class RAVEnSQLite:
         else:
             log.error("Was asked to begin reading/writing data without opening connections.")
 
-    def _get_summation(self, xmltree):
-        log.warning("I'm not implemented yet")
-
-    def _getInstantDemandKWh(self, xmltree):
-        '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
-        # Get the Instantaneous Demand
-        hex_demand = xmltree.find('Demand').text
-        # Deal with export (neg values)
-        if int(hex_demand, 16) < 0x80000000:
-            d = int(hex_demand, 16)
+    def _undo_twos(self, str_value, num_digits=None):
+        '''Convert a twos complement hex string to a signed int'''
+        if num_digits is not None:
+            digits = len(str_value) - 2
         else:
-            d = -1 * 0xFFFFFFFF + int(hex_demand, 16) - 1
-        fDemand = float(d)
+            digits = num_digits
+        pattern8 = '0x8'
+        patternF = '0xF'
+        for i in range(1, digits):
+            pattern8 += '0'
+            patternF += 'F'
+        if int(str_value, 16) < int(pattern8, 16):
+            n = int(str_value, 16)
+        else:
+            n = -1 * int(patternF, 16) + int(str_value, 16) -1
+        return n
+
+    def _get_summation(self, xmltree):
+        '''Returns two floats: the first is total imported kWh; the second is total exported kWh'''
+        hex_import = xmltree.find('SummationDelivered').text
+        hex_export = xmltree.find('SummationReceived').text
+        imported = float(self._undo_twos(hex_import, num_digits=16))
+        exported = float(self._undo_twos(hex_export, num_digits=16))
+        res_import = self._calculateRAVEnNumber(xmltree, imported)
+        res_export = self._calculateRAVEnNumber(xmltree, exported)
+        return res_import, res_export
+
+
+    def _get_instant_demand(self, xmltree):
+        '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
+        hex_demand = xmltree.find('Demand').text
+        fDemand = float(self._undo_twos(hex_demand, num_digits=8))
         fResult = self._calculateRAVEnNumber(xmltree, fDemand)
-        return fResult
+        # x 1000 to convert kW -> W
+        return fResult * 1000
 
     def _calculateRAVEnNumber(self, xmltree, value):
         '''Calculates a float value from RAVEn using Multiplier and Divisor in XML response'''
@@ -200,4 +220,4 @@ class RAVEnSQLite:
             fResult = float(value * fMultiplier)
         else: # (Divisor > 0) or anything else
             fResult = float(value / fDivisor)
-        return fResult*1000
+        return fResult
