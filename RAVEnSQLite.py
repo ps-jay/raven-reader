@@ -253,18 +253,19 @@ class RAVEnSQLite:
     def _get_summation(self, xmltree):
         '''Returns a dict with a struct_time and two ints:
             - timestamp: the timestamp
-            - imported:  total imported kWh
-            - exported:  total exported kWh'''
+            - imported:  total imported Wh
+            - exported:  total exported Wh'''
         hex_import = xmltree.find('SummationDelivered').text
         hex_export = xmltree.find('SummationReceived').text
         imported = float(self._undo_twos(hex_import, num_digits=16))
         exported = float(self._undo_twos(hex_export, num_digits=16))
         timestamp = int(xmltree.find('TimeStamp').text, 16)
 
+        # x 1000 to convert kWh -> Wh
         result = {
             'timestamp': self._get_raven_date(timestamp),
-            'imported':  int(self._calculateRAVEnNumber(xmltree, imported)),
-            'exported':  int(self._calculateRAVEnNumber(xmltree, exported)),
+            'imported':  int(self._calculateRAVEnNumber(xmltree, imported) * 1000),
+            'exported':  int(self._calculateRAVEnNumber(xmltree, exported) * 1000),
         }
 
         return result
