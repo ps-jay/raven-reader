@@ -114,7 +114,7 @@ def main():
             signal.SIGTTIN: None,
             signal.SIGTTOU: None,
             signal.SIGTSTP: None,
-            signal.SIGTERM: 'exitSafely',
+            signal.SIGTERM: exitSafely,
         }
         dMon.prevent_core = True
 
