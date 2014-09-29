@@ -1,5 +1,7 @@
 import sys
 import time
+import datetime
+import calendar
 import re
 import xml.etree.ElementTree as ET
 import logging as log
@@ -12,6 +14,8 @@ class RAVEnSQLite:
 
     def __init__(self, serDevice, db_file):
         '''The constructor requires all connection information for both SQLite and the RAVEn'''
+        self._Y2K_SECONDS = calendar.timegm(datetime.datetime(2000, 01, 01, 00, 00, 00).utctimetuple())
+
         self.serDevice = serDevice
         self.database_file = db_file
         self.ser = None
@@ -153,7 +157,7 @@ class RAVEnSQLite:
                                 #cursor.execute('''INSERT INTO %s
                                 #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
                                 #self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
-                                log.warning("Current demand: %dW" % self._get_instant_demand(xmltree))
+                                log.warning(self._get_instant_demand(xmltree))
                             elif xmltree.tag == 'CurrentSummationDelivered':
                                 log.warning(self._get_summation(xmltree))
                             else:
@@ -191,23 +195,38 @@ class RAVEnSQLite:
         return n
 
     def _get_summation(self, xmltree):
-        '''Returns two floats: the first is total imported kWh; the second is total exported kWh'''
+        '''Returns a dict with a struct_time and two floats:
+            - timestamp: the timestamp
+            - imported:  total imported kWh
+            - exported:  total exported kWh'''
         hex_import = xmltree.find('SummationDelivered').text
         hex_export = xmltree.find('SummationReceived').text
         imported = float(self._undo_twos(hex_import, num_digits=16))
         exported = float(self._undo_twos(hex_export, num_digits=16))
-        res_import = self._calculateRAVEnNumber(xmltree, imported)
-        res_export = self._calculateRAVEnNumber(xmltree, exported)
-        return res_import, res_export
+        timestamp = int(xmltree.find('TimeStamp').text, 16)
 
+        result = {
+            'timestamp': self._get_raven_date(timestamp),
+            'imported':  self._calculateRAVEnNumber(xmltree, imported),
+            'exported':  self._calculateRAVEnNumber(xmltree, exported),
+        }
+
+        return result
 
     def _get_instant_demand(self, xmltree):
-        '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
+        '''Returns a struct_time and a float value for the current demand in Watts'''
         hex_demand = xmltree.find('Demand').text
+        timestamp = int(xmltree.find('TimeStamp').text, 16)
         fDemand = float(self._undo_twos(hex_demand, num_digits=8))
         fResult = self._calculateRAVEnNumber(xmltree, fDemand)
+
         # x 1000 to convert kW -> W
-        return fResult * 1000
+        result = {
+            'timestamp': self._get_raven_date(timestamp),
+            'demand':    fResult * 1000,
+        }
+
+        return result
 
     def _calculateRAVEnNumber(self, xmltree, value):
         '''Calculates a float value from RAVEn using Multiplier and Divisor in XML response'''
@@ -221,3 +240,8 @@ class RAVEnSQLite:
         else: # (Divisor > 0) or anything else
             fResult = float(value / fDivisor)
         return fResult
+
+    def _get_raven_date(self, value):
+        '''Returns a time stamp as a time.struct_time'''
+        since_epoch = self._Y2K_SECONDS + value
+        return time.gmtime(since_epoch)
