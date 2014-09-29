@@ -10,6 +10,7 @@ from daemon import DaemonContext
 # This holds our RAVEn to SQLite class
 myWorker = None
 
+
 def argProcessing():
     '''Processes command line arguments'''
     parser = argparse.ArgumentParser(
@@ -43,54 +44,70 @@ def argProcessing():
     )
     return parser.parse_args()
 
+
 def exitSafely(signum, frame):
-  '''SIGINT (Ctrl+C) handler'''
-  global myWorker
-  if myWorker is not None: 
-    myWorker.close()
-  log.info("Ctrl+C pressed. Exiting.")
-  exit(0)
+    '''SIGINT (Ctrl+C) handler'''
+    global myWorker
+    if myWorker is not None:
+        myWorker.close()
+    log.info("Ctrl+C pressed. Exiting.")
+    exit(0)
+
 
 def main():
-  # Process cmd line arguments
-  programArgs = argProcessing()
+    # Process cmd line arguments
+    programArgs = argProcessing()
 
-  # Setup logging
-  if programArgs.v > 5:
-    verbosityLevel = 5
-  else:
-    verbosityLevel = programArgs.v
-  verbosityLevel = (5 - verbosityLevel)*10
-  if programArgs.logfile is not None:
-    log.basicConfig(format='%(asctime)s %(message)s', filename=programArgs.logfile, level=verbosityLevel)
-  else:
-    log.basicConfig(format='%(asctime)s %(message)s', level=verbosityLevel)
-
-  # Initial log message
-  log.info("Programme started.")
-
-  # Should we be daemonising?
-  if programArgs.daemon is not None:
-    dMon = DaemonContext()
-    dMon.pidfile = programArgs.pidfile
-    dMon.detach_process = True
-    dMon.signal_map = { signal.SIGTTIN: None, signal.SIGTTOU: None, signal.SIGTSTP: None, signal.SIGTERM: 'exitSafely'}
-    dMon.prevent_core = True
-
-
-  # Initialise the class 
-  global myWorker
-  myWorker = raven(programArgs.device, programArgs.database)
-  if not myWorker.open():
-    log.critical("Couldn't access resources needed. Check logs for more information.")
-  else:
-    # Register exit handler (only if in fg)
-    if programArgs.daemon is None:
-      signal.signal(signal.SIGINT, exitSafely)
+    # Setup logging
+    if programArgs.v > 5:
+        verbosityLevel = 5
     else:
-      dMon.open()
+        verbosityLevel = programArgs.v
+    verbosityLevel = (5 - verbosityLevel)*10
+    if programArgs.logfile is not None:
+        log.basicConfig(
+            format='%(asctime)s %(message)s',
+            filename=programArgs.logfile,
+            level=verbosityLevel
+        )
+    else:
+        log.basicConfig(
+            format='%(asctime)s %(message)s',
+            level=verbosityLevel
+        )
 
-    myWorker.run()
+    # Initial log message
+    log.info("Programme started.")
+
+    # Should we be daemonising?
+    if programArgs.daemon is not None:
+        dMon = DaemonContext()
+        dMon.pidfile = programArgs.pidfile
+        dMon.detach_process = True
+        dMon.signal_map = {
+            signal.SIGTTIN: None,
+            signal.SIGTTOU: None,
+            signal.SIGTSTP: None,
+            signal.SIGTERM: 'exitSafely',
+        }
+        dMon.prevent_core = True
+
+    # Initialise the class
+    global myWorker
+    myWorker = raven(programArgs.device, programArgs.database)
+    if not myWorker.open():
+        log.critical(
+            "Couldn't access resources needed. Check logs for more"
+            "information."
+        )
+    else:
+        # Register exit handler (only if in fg)
+        if programArgs.daemon is None:
+            signal.signal(signal.SIGINT, exitSafely)
+        else:
+            dMon.open()
+
+        myWorker.run()
 
 if __name__ == '__main__':
-  main()
+    main()
