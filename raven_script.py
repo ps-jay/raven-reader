@@ -2,28 +2,46 @@
 
 import argparse
 import signal
-from RAVEnMQTT import RAVEnMQTT as raven
+from RAVEnSQLite import RAVEnSQLite as raven
 import sys
 import logging as log
 from daemon import DaemonContext
 
-# This holds our RAVEn to MQTT class
+# This holds our RAVEn to SQLite class
 myWorker = None
 
 def argProcessing():
-  '''Processes command line arguments'''
-  parser = argparse.ArgumentParser(description="Rainforest Automation RAVEn Serial to MQTT Interface")
-  parser.add_argument("--device", help="This is the serial port on which the RAVEn is available (default /dev/ttyUSB0)", default="/dev/ttyUSB0")
-  parser.add_argument("--host", help="MQTT server hostname (default localhost)", default="localhost")
-  parser.add_argument("--port", help="MQTT server port number (default 1883)", type=int, default=1883)
-  parser.add_argument("-u", help="MQTT server username (omit for no auth)", default=None)
-  parser.add_argument("-P", help="MQTT server password (default is empty)", default=None)
-  parser.add_argument("topic", help="MQTT topic string to publish to")
-  parser.add_argument("-v", help="Increase output verbosity", action="count", default=0)
-  parser.add_argument("--logfile", help="Log to the specified file rather than STDERR", default=None, type=str)
-  parser.add_argument("--daemon", help="Fork and run in background", default=None)
-  parser.add_argument("--pidfile", help="PID file when run with --daemon (ignored otherwise)", default="/var/run/raven_script.pid")
-  return parser.parse_args()
+    '''Processes command line arguments'''
+    parser = argparse.ArgumentParser(
+        description="Rainforest Automation RAVEn Serial to SQLite",
+    )
+    parser.add_argument("--device", "-d",
+        help="This is the serial port on which the RAVEn is available (default /dev/ttyUSB0)",
+        default="/dev/ttyUSB0",
+    )
+    parser.add_argument("-v",
+        help="Increase output verbosity",
+        action="count",
+        default=0,
+    )
+    parser.add_argument("--logfile", "-l",
+        help="Log to the specified file rather than STDERR",
+        default=None,
+        type=str,
+    )
+    parser.add_argument("--daemon",
+        help="Fork and run in background",
+        default=None,
+    )
+    parser.add_argument("--pidfile", "-p",
+        help="PID file when run with --daemon (ignored otherwise)",
+        default="/var/run/raven_script.pid",
+    )
+    parser.add_argument("--database", "-f",
+        help="SQLite database file to write to",
+        default="/srv/energy/meter.sqlite",
+    )
+    return parser.parse_args()
 
 def exitSafely(signum, frame):
   '''SIGINT (Ctrl+C) handler'''
@@ -62,7 +80,7 @@ def main():
 
   # Initialise the class 
   global myWorker
-  myWorker = raven(programArgs.device, programArgs.host, programArgs.port, programArgs.u, programArgs.P, programArgs.topic)
+  myWorker = raven(programArgs.device, programArgs.database)
   if not myWorker.open():
     log.critical("Couldn't access resources needed. Check logs for more information.")
   else:

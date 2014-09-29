@@ -4,23 +4,18 @@ import re
 import xml.etree.ElementTree as ET
 import logging as log
 import serial
-import paho.mqtt.client as mqtt
+import sqlite3
 
-class RAVEnMQTT:
-    '''This class handles all communication to/from the RAVEn and the MQTT     broker'''
+class RAVEnSQLite:
+    '''This class handles all communication to/from the RAVEn and the SQLite database'''
 
-    def __init__(self, serDevice, hostName, hostPort, hostUser, hostPwd, topic):
-        '''The constructor requires all connection information for both MQTT and the RAVEn'''
+    def __init__(self, serDevice, db_file):
+        '''The constructor requires all connection information for both SQLite and the RAVEn'''
         self.serDevice = serDevice
-        self.hostName = hostName
-        self.hostPort = hostPort
-        self.hostUser = hostUser
-        self.hostPwd = hostPwd
-        self.topic = topic
-        self.mqttTimeout = 10
-        self.hostKeepAlive = 60
+        self.database_file = db_file
         self.ser = None
-        self.client = None
+        self.database = None
+        self.cursor = None
 
         # Various Regex's
         self.reStartTag = re.compile('^<[a-zA-Z0-9]+>') # to find a start XML tag (at very beginning of line)
@@ -29,29 +24,6 @@ class RAVEnMQTT:
     def __del__(self):
         '''This will close all connections (serial/MQTT)'''
         self.close()
-
-    def _mqttOnPublish(self, client, userdata, mid):
-        '''This is the event handler for when the MQTT message has been published'''
-        log.debug("MQTT message sent.")
-
-    def _mqttOnConnect(self, client, userdata, rc):
-        '''This is the event handler for when one has connected to the MQTT broker. Will exit() if connect is not successful.'''
-        if rc == 0:
-            log.info("Connected to MQTT server successfully.")
-            client.subscribe("$SYS/#")
-        elif rc == 1:
-            log.critical("Connection to server refused - incorrect protocol version.")
-        elif rc == 2:
-            log.critical("Connection to server refused - invalid client identifier.")
-        elif rc == 3:
-            log.critical("Connection to server refused - server unavailable.")
-        elif rc == 4:
-            log.critical("Connection to server refused - bad username or password.")
-        elif rc == 5:
-            log.critical("Connection to server refused - not authorised.")
-        elif rc >=6 :
-            log.critical("Reserved code received!")
-        self.closeSerial()
 
     def _openSerial(self):
         '''This function opens the serial port looking for a RAVEn. Returns True if successful, False otherwise.'''
@@ -67,15 +39,10 @@ class RAVEnMQTT:
             log.critical("Cannot open serial port: " + str(e))
             return False
 
-    def _openMQTT(self):
-        '''This function will open a connection with an MQTT broker'''
-        self.client = mqtt.Client()
-        self.client.on_connect = lambda x, y, z: self._mqttOnConnect
-        self.client.on_publish = lambda x, y, z: self._mqttOnPublish
-        if self.hostUser is not None:
-            self.client.username_pw_set(self.hostUser, self.hostPwd)
-	self.client.loop_start()
-        self.client.connect(self.hostName, self.hostPort, self.hostKeepAlive)
+    def _openSQLite(self):
+        '''This function will open a connection with the SQLite database'''
+        self.database = sqlite3.connect(self.database_file)
+        self.cursor = self.database.cursor()
         return True
 
     def _closeSerial(self):
@@ -86,38 +53,39 @@ class RAVEnMQTT:
         else:
             log.debug("Asking to close serial port, but it was never open.")
 
-    def _closeMQTT(self):
-        '''This function will close the MQTT connection'''
-        if self.client is not None:
-            self.client.loop_stop()
-            self.client.disconnect()
-            log.info("MQTT connection was closed.")
+    def _closeSQLite(self):
+        '''This function will close the SQLite connection'''
+        if self.database is not None:
+            self.database.commit()
+            self.cursor.close()
+            self.database.close()
+            log.info("SQLite connection was closed.")
         else:
-            log.debug("Asking to close MQTT connection, but it was never open.")
+            log.debug("Asking to close SQLite connection, but it was never open.")
 
     def open(self):
-        '''This function will open all necessary connections for the RAVEn to talk to the MQTT broker'''
+        '''This function will open all necessary connections for the RAVEn to talk to the SQLite database'''
         if not self._openSerial():
-	    log.critical("Serial port was not opened due to an error.")
+            log.critical("Serial port was not opened due to an error.")
             return False
         else:
-            if not self._openMQTT():
-		log.critical("MQTT connection was not opened due to an error.")
+            if not self._openSQLite():
+                log.critical("SQLite connection was not opened due to an error.")
                 return False
-	    else:
-		return True
+            else:
+                return True
 
     def close(self):
         '''This function will close all previously opened connections'''
-        if self.client is not None: self._closeMQTT()
+        if self.database is not None: self._closeSQLite()
         if self.ser is not None: self._closeSerial()
 
     def _isReady(self):
         '''This function is used to check if this object has been initialised correctly and is ready to process data'''
-        return (self.client is not None) and (self.ser is not None)
+        return (self.database is not None) and (self.ser is not None)
 
     def run(self):
-        '''This function will read from the serial device, process the data and publish MQTT messages'''
+        '''This function will read from the serial device, process the data and write to the SQLite database'''
         if self._isReady():
             # begin listening to RAVEn
             rawxml = ""
@@ -140,8 +108,13 @@ class RAVEnMQTT:
                         try:
                             xmltree = ET.fromstring(rawxml)
                             if xmltree.tag == 'InstantaneousDemand':
-                                self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
+                                #self.database
+                                #cursor.execute('''INSERT INTO %s
+                                #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
+                                #self.client.publish(self.topic, payload=self._getInstantDemandKWh(xmltree), qos=0)
                                 log.debug(self._getInstantDemandKWh(xmltree))
+                                # back off, there's only one update per ~40 seconds anyway
+                                time.sleep(20)
                             else:
                                 log.warning("*** Unrecognised (not implemented) XML Fragment")
                                 log.warning(rawxml)
@@ -149,12 +122,20 @@ class RAVEnMQTT:
                           log.error("Exception triggered: " + str(e))
                         # reset rawxml
                         rawxml = ""
+                        # ask for another read
+                        log.debug("Ask for another instantanious read")
+                        self.ser.writelines(
+                          '<Command>'
+                          '<Name>get_instantaneous_demand</Name>'
+                          '<Refresh>Y</Refresh>'
+                          '</Command>'
+                        )
                     # if it starts with a space, it's inside the fragment
                     else:
                         rawxml = rawxml + rawline
                         log.debug("Normal inner XML Fragment: " + rawline)
                 else:
-		  pass
+                  pass
 
         else:
             log.error("Was asked to begin reading/writing data without opening connections.")
@@ -162,7 +143,13 @@ class RAVEnMQTT:
     def _getInstantDemandKWh(self, xmltree):
         '''Returns a single float value for the Demand from an Instantaneous Demand response from RAVEn'''
         # Get the Instantaneous Demand
-        fDemand = float(int(xmltree.find('Demand').text,16))
+        hex_demand = xmltree.find('Demand').text
+        # Deal with export (neg values)
+        if int(hex_demand, 16) < 0x80000000:
+            d = int(hex_demand, 16)
+        else:
+            d = -1 * 0xFFFFFFFF + int(hex_demand, 16) - 1
+        fDemand = float(d)
         fResult = self._calculateRAVEnNumber(xmltree, fDemand)
         return fResult
 
