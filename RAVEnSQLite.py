@@ -121,7 +121,7 @@ class RAVEnSQLite:
         return (self.database is not None) and (self.ser is not None)
 
     def _request_instant(self):
-        SECONDS = 40.0
+        SECONDS = 45
         if not self._inst_timer_running.is_set():
             self._inst_timer_running.set()
             self.ser.writelines(
@@ -142,7 +142,7 @@ class RAVEnSQLite:
             )
 
     def _request_summation(self):
-        SECONDS = 20.0
+        SECONDS = 240
         if not self._summ_timer_running.is_set():
             self._summ_timer_running.set()
             self.ser.writelines(
@@ -190,14 +190,29 @@ class RAVEnSQLite:
                         try:
                             xmltree = ET.fromstring(rawxml)
                             if xmltree.tag == 'InstantaneousDemand':
-                                # self.database
-                                # cursor.execute('''INSERT INTO %s
-                                #                VALUES (?, ?, ?)''' % value, (int(unixTime), float(values[value]), int(0),))
-                                log.warning(self._get_instant_demand(xmltree))
+                                demand = self._get_instant_demand(xmltree)
+                                log.info(demand)
+                                self.cursor.execute('''
+                                    INSERT INTO demand
+                                    VALUES (%d, %s)
+                                ''' % (
+                                    calendar.timegm(demand['timestamp']),
+                                    demand['demand'],
+                                ))
+                                self.database.commit()
                             elif xmltree.tag == 'CurrentSummationDelivered':
-                                log.warning(self._get_summation(xmltree))
+                                summation = self._get_summation(xmltree)
+                                log.info(summation)
+                                self.cursor.execute('''
+                                    INSERT INTO metered
+                                    VALUES (%d, %d, %d)
+                                ''' % (
+                                    calendar.timegm(summation['timestamp']),
+                                    summation['imported'],
+                                    summation['exported'],
+                                ))
                             else:
-                                log.warning("Unhandled XML Block '%s'" %
+                                log.info("Unhandled XML Block '%s'" %
                                     xmltree.tag
                                 )
                                 log.debug(rawxml)
