@@ -29,6 +29,8 @@ class RAVEnSQLite:
 
         self._inst_timer_running = threading.Event()
         self._summ_timer_running = threading.Event()
+        self._inst_backoff = threading.Event()
+        self._summ_backoff = threading.Event()
         self._inst_timer = None
         self._summ_timer = None
 
@@ -140,6 +142,8 @@ class RAVEnSQLite:
                 "Started a %d second back-off timer for instant demand reading"
                 "requests" % SECONDS
             )
+            # Allow the demand data to be recorded
+            self._inst_backoff.clear()
 
     def _request_summation(self):
         SECONDS = 240
@@ -161,6 +165,8 @@ class RAVEnSQLite:
                 "Started a %d second back-off timer for current summation"
                 "reading requests" % SECONDS
             )
+            # Allow the summation data to be recorded
+            self._summ_backoff.clear()
 
     def run(self):
         '''This function will read from the serial device, process the data and
@@ -190,27 +196,32 @@ class RAVEnSQLite:
                         try:
                             xmltree = ET.fromstring(rawxml)
                             if xmltree.tag == 'InstantaneousDemand':
-                                demand = self._get_instant_demand(xmltree)
-                                log.info(demand)
-                                self.cursor.execute('''
-                                    INSERT INTO demand
-                                    VALUES (%d, %s)
-                                ''' % (
-                                    calendar.timegm(demand['timestamp']),
-                                    demand['demand'],
-                                ))
-                                self.database.commit()
+                                if not self._inst_backoff.is_set():
+                                    self._inst_backoff.set()
+                                    demand = self._get_instant_demand(xmltree)
+                                    log.info(demand)
+                                    self.cursor.execute('''
+                                        INSERT INTO demand
+                                        VALUES (%d, %s)
+                                    ''' % (
+                                        calendar.timegm(demand['timestamp']),
+                                        demand['demand'],
+                                    ))
+                                    self.database.commit()
                             elif xmltree.tag == 'CurrentSummationDelivered':
-                                summation = self._get_summation(xmltree)
-                                log.info(summation)
-                                self.cursor.execute('''
-                                    INSERT INTO metered
-                                    VALUES (%d, %d, %d)
-                                ''' % (
-                                    calendar.timegm(summation['timestamp']),
-                                    summation['imported'],
-                                    summation['exported'],
-                                ))
+                                if not self._summ_backoff.is_set():
+                                    self._summ_backoff.set()
+                                    summation = self._get_summation(xmltree)
+                                    log.info(summation)
+                                    self.cursor.execute('''
+                                        INSERT INTO metered
+                                        VALUES (%d, %d, %d)
+                                    ''' % (
+                                        calendar.timegm(summation['timestamp']),
+                                        summation['imported'],
+                                        summation['exported'],
+                                    ))
+                                    self.database.commit()
                             else:
                                 log.info("Unhandled XML Block '%s'" %
                                     xmltree.tag
