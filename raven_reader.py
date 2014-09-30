@@ -42,7 +42,6 @@ def argProcessing():
     )
     parser.add_argument("--database", "-f",
         help="SQLite database file to write to",
-        default="/srv/energy/meter.sqlite",
     )
     parser.add_argument("--init-database",
         help="Initialise the database, and then quit (ignores most options)",
@@ -82,6 +81,10 @@ def main():
             format='%(asctime)s %(message)s',
             level=verbosityLevel
         )
+
+    if programArgs.database is None:
+        log.fatal("No database file specified")
+        sys.exit(1)
 
     if programArgs.init_database:
         log.warning("Initialising the database")
