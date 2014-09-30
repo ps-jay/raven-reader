@@ -41,7 +41,7 @@ class RAVEnSQLite:
         self.reEndTag = re.compile('^<\/[a-zA-Z0-9]+>')
 
     def __del__(self):
-        '''This will close all connections (serial/MQTT)'''
+        '''This will close all connections (serial/database)'''
         self.close()
 
     def _openSerial(self):
@@ -171,78 +171,83 @@ class RAVEnSQLite:
     def run(self):
         '''This function will read from the serial device, process the data and
         write to the SQLite database'''
-        if self._isReady():
-            # begin listening to RAVEn
-            rawxml = ""
-
-            while True:
-                # Send requests (if timer has expired, see function defs)
-                self._request_instant()
-                self._request_summation()
-                # wait for /n terminated line on serial port (up to timeout)
-                rawline = self.ser.readline()
-                # remove null bytes that creep in immediately after connecting
-                rawline = rawline.strip('\0')
-                # only bother if this isn't a blank line
-                if len(rawline) > 0:
-                    # start tag
-                    if self.reStartTag.match(rawline):
-                        rawxml = rawline
-                        log.debug("Start XML Tag found: " + rawline)
-                    # end tag
-                    elif self.reEndTag.match(rawline):
-                        rawxml = rawxml + rawline
-                        log.debug("End XML Tag Fragment found: " + rawline)
-                        try:
-                            xmltree = ET.fromstring(rawxml)
-                            if xmltree.tag == 'InstantaneousDemand':
-                                if not self._inst_backoff.is_set():
-                                    self._inst_backoff.set()
-                                    demand = self._get_instant_demand(xmltree)
-                                    log.info(demand)
-                                    self.cursor.execute('''
-                                        INSERT INTO demand
-                                        VALUES (%d, %s)
-                                    ''' % (
-                                        calendar.timegm(demand['timestamp']),
-                                        demand['demand'],
-                                    ))
-                                    self.database.commit()
-                            elif xmltree.tag == 'CurrentSummationDelivered':
-                                if not self._summ_backoff.is_set():
-                                    self._summ_backoff.set()
-                                    summation = self._get_summation(xmltree)
-                                    log.info(summation)
-                                    self.cursor.execute('''
-                                        INSERT INTO metered
-                                        VALUES (%d, %d, %d)
-                                    ''' % (
-                                        calendar.timegm(summation['timestamp']),
-                                        summation['imported'],
-                                        summation['exported'],
-                                    ))
-                                    self.database.commit()
-                            else:
-                                log.info("Unhandled XML Block '%s'" %
-                                    xmltree.tag
-                                )
-                                log.debug(rawxml)
-                        except Exception as e:
-                            log.error("Exception triggered: " + str(e))
-                        # reset rawxml
-                        rawxml = ""
-                    # if it starts with a space, it's inside the fragment
-                    else:
-                        rawxml = rawxml + rawline
-                        log.debug("Normal inner XML Fragment: " + rawline)
-                else:
-                    pass
-
-        else:
+        if not self._isReady():
             log.error(
                 "Was asked to begin reading/writing data without opening"
                 "connections."
             )
+            return False
+
+        # begin listening to RAVEn
+        rawxml = ""
+
+        while True:
+            # Send requests (if timer has expired, see function defs)
+            self._request_instant()
+            self._request_summation()
+            # wait for /n terminated line on serial port (up to timeout)
+            rawline = self.ser.readline()
+            # remove null bytes that creep in immediately after connecting
+            rawline = rawline.strip('\0')
+            # only bother if this isn't a blank line
+            if len(rawline) > 0:
+                # start tag
+                if self.reStartTag.match(rawline):
+                    rawxml = rawline
+                    log.debug("Start XML Tag found: " + rawline)
+                # end tag
+                elif self.reEndTag.match(rawline):
+                    rawxml = rawxml + rawline
+                    log.debug("End XML Tag Fragment found: " + rawline)
+                    try:
+                        xmltree = ET.fromstring(rawxml)
+                        if xmltree.tag == 'InstantaneousDemand':
+                            if not self._inst_backoff.is_set():
+                                self._inst_backoff.set()
+                                demand = self._get_instant_demand(xmltree)
+                                log.info("Current demand: %dW" % demand['demand'])
+                                self.cursor.execute('''
+                                    INSERT INTO demand
+                                    VALUES (%d, %s)
+                                ''' % (
+                                    calendar.timegm(demand['timestamp']),
+                                    demand['demand'],
+                                ))
+                                log.debug("Inserted demand value into database")
+                                self.database.commit()
+                        elif xmltree.tag == 'CurrentSummationDelivered':
+                            if not self._summ_backoff.is_set():
+                                self._summ_backoff.set()
+                                summation = self._get_summation(xmltree)
+                                log.info("Total Import: %dWh; Total Export: %dWh" % (
+                                    summation['imported'],
+                                    summation['exported'],
+                                ))
+                                self.cursor.execute('''
+                                    INSERT INTO metered
+                                    VALUES (%d, %d, %d)
+                                ''' % (
+                                    calendar.timegm(summation['timestamp']),
+                                    summation['imported'],
+                                    summation['exported'],
+                                ))
+                                log.debug("Inserted summation values into database")
+                                self.database.commit()
+                        else:
+                            log.debug("Unhandled XML Block '%s'" %
+                                xmltree.tag
+                            )
+                            log.debug(rawxml)
+                    except Exception as e:
+                        log.error("Exception triggered: " + str(e))
+                    # reset rawxml
+                    rawxml = ""
+                # if it starts with a space, it's inside the fragment
+                else:
+                    rawxml = rawxml + rawline
+                    log.debug("Normal inner XML Fragment: " + rawline)
+            else:
+                pass
 
     def _undo_twos(self, str_value, num_digits=None):
         '''Convert a twos complement hex string to a signed int'''
