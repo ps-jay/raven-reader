@@ -126,6 +126,8 @@ class RAVEnSQLite:
         SECONDS = 45
         if not self._inst_timer_running.is_set():
             self._inst_timer_running.set()
+            # Allow the demand data to be recorded
+            self._inst_backoff.clear()
             self.ser.writelines(
                 '<Command>'
                 '  <Name>get_instantaneous_demand</Name>'
@@ -142,20 +144,20 @@ class RAVEnSQLite:
                 "Started a %d second back-off timer for instant demand reading"
                 "requests" % SECONDS
             )
-            # Allow the demand data to be recorded
-            self._inst_backoff.clear()
 
     def _request_summation(self):
         SECONDS = 240
         if not self._summ_timer_running.is_set():
             self._summ_timer_running.set()
+            # Allow the summation data to be recorded
+            self._summ_backoff.clear()
             self.ser.writelines(
                 '<Command>'
                 '  <Name>get_current_summation_delivered</Name>'
                 '  <Refresh>Y</Refresh>'
                 '</Command>'
             )
-            log.debug("Requested a current summation reading")
+            log.info("Requested a current summation reading")
             self._summ_timer = threading.Timer(
                 SECONDS,
                 self._summ_timer_running.clear
@@ -165,8 +167,6 @@ class RAVEnSQLite:
                 "Started a %d second back-off timer for current summation"
                 "reading requests" % SECONDS
             )
-            # Allow the summation data to be recorded
-            self._summ_backoff.clear()
 
     def run(self):
         '''This function will read from the serial device, process the data and
